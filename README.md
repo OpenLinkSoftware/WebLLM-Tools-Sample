@@ -1,6 +1,8 @@
 # WebLLM-Tools-Sample
 Sample of using tools with WebLLM
 
+[Demo App](https://openlinksoftware.github.io/WebLLM-Tools-Sample/src/index.html)
+
 ```js
 const tools = [
   {
