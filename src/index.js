@@ -71,6 +71,7 @@ function updateEngineInitProgressCallback(report) {
   document.getElementById("download-status").textContent = report.text;
 }
 
+
 // Create engine instance
 const engine = new webllm.MLCEngine();
 engine.setInitProgressCallback(updateEngineInitProgressCallback);
@@ -243,10 +244,15 @@ availableModels.forEach((modelId) => {
   document.getElementById("model-selection").appendChild(option);
 });
 document.getElementById("model-selection").value = selectedModel;
-document.getElementById("download").addEventListener("click", function () {
-  initializeWebLLMEngine().then(() => {
-    document.getElementById("send").disabled = false;
-  });
+document.getElementById("download").addEventListener("click", async function () {
+  try {
+    const gpuVendor = await engine.getGPUVendor();
+  } catch(e) {
+    alert(e);
+    return;
+  }
+  await initializeWebLLMEngine();
+  document.getElementById("send").disabled = false;
 });
 document.getElementById("send").addEventListener("click", function () {
   onMessageSend();
