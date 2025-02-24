@@ -1,5 +1,5 @@
 # WebLLM-Tools-Sample
-Sample of using tools with WebLLM (Note it works only in browsers with WebGPU support and you must have at last 4Gb of free VRAM).
+Sample of using tools with WebLLM (Note it works only in browsers with WebGPU support and you must have at last 6Gb of free VRAM).
 Tested on Chrome and Brave on MSWindows and macOS
 
 [Demo App](https://openlinksoftware.github.io/WebLLM-Tools-Sample/src/index.html)
@@ -28,11 +28,39 @@ const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "execute_SPARQL",
+      description: "Execute any SPARQL select queries and fetch results"+
+                   "Always use this if the user is asking for execute some SPARQL select query. "+
+                   "If the user has a typo in their SPARQL select query, correct it before executing.",
+      parameters: {
+        type: "object",
+        properties: {
+            type: "object",
+            properties: {
+                query: {
+                    type: "string",
+                    description: "SPARQL select query"
+                }
+            },
+        },
+        required: ["query"],
+      },
+      "return": {
+        "type": "object",
+        "description": "A data in application/sparql-results+json format"
+      }
+    },
+  },
   ];
 ```
 
 Sample of using tool calls with Web LLM.
 Now sample supports only Qwen2.5-* LLM models
 
-Main testing was with `Qwen2.5-3B-Instruct-q1416_1-MLC` https://huggingface.co/mlc-ai/Qwen2.5-3B-Instruct-q4f16_1-MLC
+Main testing was with `Qwen2.5-3B-Instruct-q4f16_1-MLC` https://huggingface.co/mlc-ai/Qwen2.5-3B-Instruct-q4f16_1-MLC
+
+Use model `Qwen2.5-7B-Instruct-q4f32_1-MLC` for working with SPARQL queries.
 

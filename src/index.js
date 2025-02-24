@@ -39,6 +39,32 @@ const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "execute_SPARQL",
+      description: "Execute any SPARQL select queries and fetch results"+
+                   "Always use this if the user is asking for execute some SPARQL select query. "+
+                   "If the user has a typo in their SPARQL select query, correct it before executing.",
+      parameters: {
+        type: "object",
+        properties: {
+            type: "object",
+            properties: {
+                query: {
+                    type: "string",
+                    description: "SPARQL select query"
+                }
+            },
+        },
+        required: ["query"],
+      },
+      "return": {
+        "type": "object",
+        "description": "A data in application/sparql-results+json format"
+      }
+    },
+  },
   ];
 
 const system_prompt = llm_template.replace('#{functions}', JSON.stringify(tools, '\n', 2));
@@ -63,7 +89,7 @@ const availableModels = webllm.prebuiltAppConfig.model_list
   .map((m) => m.model_id)
   .filter((model_id) => model_id.startsWith('Qwen2.5-'));
 
-let selectedModel = "Qwen2.5-3B-Instruct-q4f16_1-MLC";
+let selectedModel = "Qwen2.5-7B-Instruct-q4f32_1-MLC";
 
 // Callback function for initializing progress
 function updateEngineInitProgressCallback(report) {
@@ -80,8 +106,11 @@ async function initializeWebLLMEngine() {
   document.getElementById("download-status").classList.remove("hidden");
   selectedModel = document.getElementById("model-selection").value;
   const config = {
-    temperature: 1.0,
+    temperature: 0.5,
     top_p: 1,
+    content_window_size: 8192,
+//    sliding_window_size: 8192,
+    prefill_chunk_size: 8192,
   };
   await engine.reload(selectedModel, config);
 }
@@ -193,7 +222,12 @@ async function onMessageSend() {
        if (tool_call && tool_call.name === "fetch_wikipedia_content") {
           const ret = await fetch_wikipedia_content(tool_call.arguments.search_query);
           content = JSON.stringify(ret);
-       } else {
+       } 
+       else if (tool_call && tool_call.name === "execute_SPARQL") {
+          const ret = await execute_SPARQL(tool_call.arguments.query);
+          content = JSON.stringify(ret);
+       } 
+       else {
           content = 'Error: Unknown function '+tool_call?.name
        }
        
@@ -326,4 +360,31 @@ async function fetch_wikipedia_content(searchQuery)
             message: error.message,
         };
     }
+}
+
+
+const endpoint = "https://linkeddata.uriburner.com/sparql/?format=application%2Fsparql-results%2Bjson&timeout=30000&maxrows=15"
+
+async function execute_SPARQL(query) {
+  const url = new URL(endpoint);
+  url.searchParams.append('query', query);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/sparql-results+json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const results = await response.json();
+    return results;
+  } catch (ex) {
+    console.error('Error executing SPARQL query:', ex);
+    return {error: ex.toString()}
+  }
 }
