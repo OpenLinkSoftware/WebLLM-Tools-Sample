@@ -6,7 +6,7 @@ import DOMPurify from "https://unpkg.com/dompurify@3.2.4/dist/purify.es.mjs";
 const llm_template =
  'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.\n\n'
 +'# Tools\n\n'
-+'You may call one or more functions to assist with the user query.\n\n'
++'You may call one or two functions to assist with the user query.\n\n'
 +'You are provided with function signatures within <tools></tools> XML tags:\n'
 +'<tools>\n'
 +'#{functions}\n'
@@ -42,9 +42,9 @@ const tools = [
   {
     type: "function",
     function: {
-      name: "execute_SPARQL",
-      description: "Execute any SPARQL select queries and fetch results"+
-                   "Always use this if the user is asking for execute some SPARQL select query. "+
+      name: "sparql_exec",
+      description: "Execute a SPARQL select query and fetch results"+
+                   "Always use this if the user is asking for execute a SPARQL select query. "+
                    "If the user has a typo in their SPARQL select query, correct it before executing.",
       parameters: {
         type: "object",
@@ -106,7 +106,7 @@ async function initializeWebLLMEngine() {
   document.getElementById("download-status").classList.remove("hidden");
   selectedModel = document.getElementById("model-selection").value;
   const config = {
-    temperature: 0.5,
+    temperature: 1.0,
     top_p: 1,
     content_window_size: 8192,
 //    sliding_window_size: 8192,
@@ -145,6 +145,16 @@ async function streamingGenerating(messages, onUpdate, onFinish, onError) {
         const func = JSON.parse(tool_call);
         onFinish("**func call:** "+tool_call, usage);
         return {done: false, tool_call: func, tool_role:"user"}; // Qwen2 role=user
+      } catch(e) {
+        console.log(e);
+      }
+    }
+    else if (finalMessage.startsWith("```json")) { 
+      const tool_call = finalMessage.replace(/^```json\n?\s*/, "").replace(/\s*\n?```$/, "");
+      try {
+        const func = JSON.parse(tool_call);
+        onFinish("**func call:** "+tool_call, usage);
+        return {done: false, tool_call: func, tool_role:"user"}; // Qwen2-Coder role=tool
       } catch(e) {
         console.log(e);
       }
@@ -223,20 +233,21 @@ async function onMessageSend() {
           const ret = await fetch_wikipedia_content(tool_call.arguments.search_query);
           content = JSON.stringify(ret);
        } 
-       else if (tool_call && tool_call.name === "execute_SPARQL") {
-          const ret = await execute_SPARQL(tool_call.arguments.query);
+       else if (tool_call && tool_call.name === "sparql_exec") {
+          const ret = await sparql_exec(tool_call.arguments.query);
           content = JSON.stringify(ret);
        } 
        else {
           content = 'Error: Unknown function '+tool_call?.name
        }
        
+       const ret_data = `<tool_response>\n{name:${tool_call.name}, content:${content} }\n</tool_response>`;
        messages.push({
-                 content: `<tool_response>${content}</tool_response>`, 
+                 content: ret_data, 
                  tool_call_id, 
                  role:tool_role});
        tool_call_id++;
-       updateLastMessage("**func result:** "+content);
+       updateLastMessage("**func result:** "+ret_data);
     }
 //    console.log(messages);
 //    console.log("------")
@@ -287,6 +298,7 @@ document.getElementById("download").addEventListener("click", async function () 
   }
   await initializeWebLLMEngine();
   document.getElementById("send").disabled = false;
+  document.getElementById("download").disabled = true;
 });
 document.getElementById("send").addEventListener("click", function () {
   onMessageSend();
@@ -365,7 +377,7 @@ async function fetch_wikipedia_content(searchQuery)
 
 const endpoint = "https://linkeddata.uriburner.com/sparql/?format=application%2Fsparql-results%2Bjson&timeout=30000&maxrows=15"
 
-async function execute_SPARQL(query) {
+async function sparql_exec(query) {
   const url = new URL(endpoint);
   url.searchParams.append('query', query);
 

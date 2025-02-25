@@ -31,7 +31,7 @@ const tools = [
   {
     type: "function",
     function: {
-      name: "execute_SPARQL",
+      name: "sparql_exec",
       description: "Execute any SPARQL select queries and fetch results"+
                    "Always use this if the user is asking for execute some SPARQL select query. "+
                    "If the user has a typo in their SPARQL select query, correct it before executing.",
