@@ -58,9 +58,12 @@ const tools = [
 ```
 
 Sample of using tool calls with Web LLM.
-Now sample supports only Qwen2.5-* LLM models
+Now it works with next model:
+- Hermes-2-Pro-Llama-3-8B
+- Hermes-3-Llama-3.1-8B
+- Llama-3.1-8B-Instruct
+- Qwen2.5-7B-Instruct
 
-Main testing was with `Qwen2.5-3B-Instruct-q4f16_1-MLC` https://huggingface.co/mlc-ai/Qwen2.5-3B-Instruct-q4f16_1-MLC
+Best results is with `Hermes-2-Pro-Llama-3-8B`
 
-Use model `Qwen2.5-7B-Instruct-q4f32_1-MLC` for working with SPARQL queries.
 

@@ -3,19 +3,6 @@ import { marked } from "https://unpkg.com/marked@15.0.7/lib/marked.esm.js";
 import DOMPurify from "https://unpkg.com/dompurify@3.2.4/dist/purify.es.mjs";
 
 
-const llm_template =
- 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.\n\n'
-+'# Tools\n\n'
-+'You may call one or two functions to assist with the user query.\n\n'
-+'You are provided with function signatures within <tools></tools> XML tags:\n'
-+'<tools>\n'
-+'#{functions}\n'
-+'</tools>\n\n'
-+'For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n'
-+'<tool_call>\n'
-+'{"name": <function-name>, "arguments": <args-json-object>}\n'
-+'</tool_call>\n'
-
 const tools = [
   {
     type: "function",
@@ -67,29 +54,14 @@ const tools = [
   },
   ];
 
-const system_prompt = llm_template.replace('#{functions}', JSON.stringify(tools, '\n', 2));
-
 
 function render(text) {
   return DOMPurify.sanitize(marked.parse(text));
 }
 
 /*************** WebLLM logic ***************/
-const messages = [
-  {
-//    content: "You are a helpful AI agent helping users.",
-    content: system_prompt,
-    role: "system",
-  },
-];
-let tool_call_id=0;
-
-
-const availableModels = webllm.prebuiltAppConfig.model_list
-  .map((m) => m.model_id)
-  .filter((model_id) => model_id.startsWith('Qwen2.5-'));
-
-let selectedModel = "Qwen2.5-7B-Instruct-q4f32_1-MLC";
+const messages = [];
+let tool_handler=null;
 
 // Callback function for initializing progress
 function updateEngineInitProgressCallback(report) {
@@ -103,16 +75,20 @@ const engine = new webllm.MLCEngine();
 engine.setInitProgressCallback(updateEngineInitProgressCallback);
 
 async function initializeWebLLMEngine() {
+  document.getElementById("user-input").textContent = 'Write and execute a sample SPARQL query'
   document.getElementById("download-status").classList.remove("hidden");
   selectedModel = document.getElementById("model-selection").value;
   const config = {
-    temperature: 1.0,
-    top_p: 1,
+    temperature: 0.2,
+//    top_p: 1,
     content_window_size: 8192,
 //    sliding_window_size: 8192,
     prefill_chunk_size: 8192,
   };
   await engine.reload(selectedModel, config);
+
+  tool_handler = new ToolHanler(selectedModel);
+  messages.push({role:"system", content:tool_handler.createSystemPrompt(tools)});
 }
 
 async function streamingGenerating(messages, onUpdate, onFinish, onError) {
@@ -120,6 +96,7 @@ async function streamingGenerating(messages, onUpdate, onFinish, onError) {
     let curMessage = "";
     let usage;
     const completion = await engine.chat.completions.create({
+      seed: 0,
       stream: true,
       messages,
       stream_options: { include_usage: true },
@@ -137,27 +114,14 @@ async function streamingGenerating(messages, onUpdate, onFinish, onError) {
     const finalMessage = await engine.getMessage();
     messages.push({content:finalMessage, role:"assistant"});
 
-    //Qwen2.5
+    //Handle Tools
     let isToolCall = false;
-    if (finalMessage.startsWith("<tool_call>")) {
-      const tool_call = finalMessage.replace("<tool_call>", "").replace("</tool_call>", "");
-      try {
-        const func = JSON.parse(tool_call);
-        onFinish("**func call:** "+tool_call, usage);
-        return {done: false, tool_call: func, tool_role:"user"}; // Qwen2 role=user
-      } catch(e) {
-        console.log(e);
-      }
-    }
-    else if (finalMessage.startsWith("```json")) { 
-      const tool_call = finalMessage.replace(/^```json\n?\s*/, "").replace(/\s*\n?```$/, "");
-      try {
-        const func = JSON.parse(tool_call);
-        onFinish("**func call:** "+tool_call, usage);
-        return {done: false, tool_call: func, tool_role:"user"}; // Qwen2-Coder role=tool
-      } catch(e) {
-        console.log(e);
-      }
+    if (tool_handler) {
+       const rc = tool_handler.checkResponse(finalMessage);
+       if (rc) {
+         onFinish("**func call:** "+rc.tool_call, usage);
+         return {done: false, func: rc.func};
+       }
     }
 
     onFinish(finalMessage, usage);
@@ -168,6 +132,24 @@ async function streamingGenerating(messages, onUpdate, onFinish, onError) {
 }
 
 /*************** UI logic ***************/
+const availableModels = webllm.prebuiltAppConfig.model_list
+  .map((m) => m.model_id)
+  .filter((model_id) => (
+  	   model_id.startsWith('Qwen2.5-7B')
+  	|| model_id.startsWith('Hermes-2-Pro-Llama')
+  	|| model_id.startsWith('Hermes-3-Llama')
+  	|| model_id.startsWith('Llama-3.1-8B-')
+//        || model_id.startsWith('DeepSeek-R1-Distill-Llama-')
+  ));
+
+//let selectedModel = "Llama-3.1-8B-Instruct-q4f32_1-1k";
+//let selectedModel = "Qwen2.5-7B-Instruct-q4f32_1-MLC";
+let selectedModel = "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC";
+
+async function onMessageStop() {
+  engine.interruptGenerate();
+}
+
 async function onMessageSend() {
   const input = document.getElementById("user-input").textContent.trim();
   const message = {
@@ -178,6 +160,7 @@ async function onMessageSend() {
     return;
   }
   document.getElementById("send").disabled = true;
+  document.getElementById("stop").disabled = false;
 
   messages.push(message);
   appendMessage(message);
@@ -220,38 +203,43 @@ async function onMessageSend() {
 
     done = rc.done;
 
-    if (!done) {
-       const tool_role = rc.tool_role;
-       const tool_call = rc.tool_call;
+    if (!done && tool_handler) {
+       const func = rc.func;
 
        const aiMessage = {content: "working...", role: "assistant"};
        appendMessage(aiMessage);
 
-       let content = "";
+       let toolResp = null;
 
-       if (tool_call && tool_call.name === "fetch_wikipedia_content") {
-          const ret = await fetch_wikipedia_content(tool_call.arguments.search_query);
-          content = JSON.stringify(ret);
-       } 
-       else if (tool_call && tool_call.name === "sparql_exec") {
-          const ret = await sparql_exec(tool_call.arguments.query);
-          content = JSON.stringify(ret);
-       } 
-       else {
-          content = 'Error: Unknown function '+tool_call?.name
+       try {
+         if (func && func.name === "fetch_wikipedia_content") {
+            const ret = await fetch_wikipedia_content(func.arguments.search_query);
+            toolResp = tool_handler.genToolResponse(func, JSON.stringify(ret));
+         } 
+         else if (func && func.name === "sparql_exec") {
+            const ret = await sparql_exec(func.arguments.query);
+            toolResp = tool_handler.genToolResponse(func, JSON.stringify(ret));
+         } 
+         else {
+            const content = 'Error: Unknown function '+func?.name;
+            toolResp = tool_handler.genToolResponse(func, JSON.stringify(content));
+         }
+
+       } catch (e) {
+            content = 'Error: '+e.toString()
+            toolResp = tool_handler.genToolResponse(func, JSON.stringify(content));
        }
-       
-       const ret_data = `<tool_response>\n{name:${tool_call.name}, content:${content} }\n</tool_response>`;
+
        messages.push({
-                 content: ret_data, 
-                 tool_call_id, 
-                 role:tool_role});
-       tool_call_id++;
-       updateLastMessage("**func result:** "+ret_data);
+                 content: toolResp.content,
+                 tool_call_id: toolResp ? toolResp.tool_call_id : 0,
+                 role: toolResp.role});
+       updateLastMessage("**func result:** "+toolResp.content);
     }
 //    console.log(messages);
 //    console.log("------")
   }
+  document.getElementById("stop").disabled = true;
 }
 
 function appendMessage(message) {
@@ -303,7 +291,262 @@ document.getElementById("download").addEventListener("click", async function () 
 document.getElementById("send").addEventListener("click", function () {
   onMessageSend();
 });
+document.getElementById("stop").addEventListener("click", function () {
+  onMessageStop();
+});
 
+
+/***********************************************/
+
+class ToolHanler {
+  qwen_template =
+ 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.\n\n'
++'# Tools\n\n'
++'You may call one or two functions to assist with the user query.\n\n'
++'You are provided with function signatures within <tools></tools> XML tags:\n'
++'<tools>\n'
++'#{functions}\n'
++'</tools>\n\n'
++'For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n'
++'<tool_call>\n'
++'{"name": <function-name>, "arguments": <args-json-object>}\n'
++'</tool_call>\n'
+
+  hermes2_template =
+ `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags.`
++` You may call one or more functions to assist with the user query. `
++`Don't make assumptions about what values to plug into functions. Here are the available tools: <tools>\n`
++' #{functions} \n\n'
++` </tools>.\n Use the following pydantic model json schema for each tool call you will make:`
++` {"properties": {"arguments": {"title": "Arguments", "type": "object"}, "name": {"title": "Name", "type": "string"}}, "required": ["arguments", "name"], "title": "FunctionCall", "type": "object"} `
++`For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n`
++`<tool_call>\n{"arguments": <args-dict>, "name": <function-name>}\n</tool_call>`;
+
+  hermes3_template =
+ `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. `
++`You may call one or more functions to assist with the user query. `
++`Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> \n`
++` #{functions} \n`
++` </tools>\n`
++`Use the following pydantic model json schema for each tool call you will make:`
++` {"properties": {"name": {"title": "Name", "type": "string"}, "arguments": {"title": "Arguments", "type": "object"}}, "required": ["name", "arguments"], "title": "FunctionCall", "type": "object"}}\n\n`
++`For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n\n`
++`<tool_call>\n{"name": <function-name>, "arguments": <args-dict>}\n</tool_call>\n`;
+
+
+
+  llama32_template =
+ 'Environment: ipython\n'
++'Cutting Knowledge Date: December 2023\n'
++'Today Date: 26 Jul 2024\n\n'
++'Given the following functions, please respond with a JSON for a function call with its proper arguments that best answers the given prompt.\n\n'
++'Respond in the format\n <tool_call>\n{"name": function name, "parameters": dictionary of argument name and its value}\n</tool_call> .\n\n'
+//+'Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}.'
++'Do not use variables.\n\n'
++'#{functions}\n'
+
+
+  llama31_template =
+// 'Environment: ipython\n'
+ 'Cutting Knowledge Date: December 2023\n'
++'Today Date: 23 Jul 2024\n\n'
++'# Tool Instructions\n'
++'- When looking for real time information use relevant functions if available\n'
++'You have access to the following functions:\n'
++'#{functions}\n'
++'If a you choose to call a function ONLY reply in the following format:\n'
++'  <function>{"name": function name, "parameters": dictionary of argument name and its value}</function>\n'
++'Here is an example,\n'
++'  <function>{"name": "example_function_name", "parameters": {"example_name": "example_value"}}</function>\n'
++'Reminder:\n'
++'- Function calls MUST follow the specified format and use BOTH <function> and </function>\n'
++'- Required parameters MUST be specified\n'
++'- Only call one function at a time\n'
++'- When calling a function, do NOT add any other words, ONLY the function calling\n'
++'- Put the entire function call reply on one line\n'
++'- Always add your sources when using search results to answer the user query\n'
++'You are a helpful Assistant.';
+  
+   deepseek_template =
+ 'Cutting Knowledge Date: December 2023\n'
++'Today Date: 23 Jul 2024\n\n'
++'# Tool Instructions\n'
++'- When looking for real time information use relevant functions if available\n'
++'You have access to the following functions:\n\n'
++'#{functions}\n'
++'If a you choose to call a function ONLY reply in the following format:\n'
++'  <tool_call>{"name": function name, "parameters": dictionary of argument name and its value}</tool_call>\n'
++'Here is an example,\n'
++'  <tool_call>{"name": "example_function_name", "parameters": {"example_name": "example_value"}}</tool_call>\n'
++'Reminder:\n'
++'- Function calls MUST follow the specified format and use BOTH <tool_call> and </tool_call>\n'
++'- Required parameters MUST be specified\n'
++'- Only call one function at a time\n'
++'- When calling a function, do NOT add any other words, ONLY the function calling\n'
++'- Put the entire function call reply on one line\n'
++'- Always add your sources when using search results to answer the user query\n'
++'You are a helpful Assistant.';
+
+  constructor(model_id) {
+    if (model_id.startsWith('Qwen2.5'))
+      this.mode = 'qwen';
+    else if (model_id.startsWith('Hermes-2-Pro-Llama'))
+      this.mode = 'hermes2_llama'
+    else if (model_id.startsWith('Hermes-3-Llama'))
+      this.mode = 'hermes3_llama'
+    else if (model_id.startsWith('Llama-3.1-'))
+      this.mode = 'llama31'
+    else if (model_id.startsWith('Llama-3.2-'))
+      this.mode = 'llama32'
+    else if (model_id.startsWith('DeepSeek-R1-Distill-Llama'))
+      this.mode = 'deepseek'
+    else
+      this.mode = 'llama31';
+    this.tool_call_id=0;
+  }
+  
+  createSystemPrompt(tools) {
+    let funcs = "";
+    for(const t of tools)
+       funcs += JSON.stringify(t, '\n', 2)+'\n\n';
+
+    if (this.mode==='qwen')
+//      return this.qwen_template.replace('#{functions}', JSON.stringify(tools, '\n', 2));
+      return this.qwen_template.replace('#{functions}', funcs);
+    else if (this.mode==='hermes2_llama')
+      return this.hermes2_template.replace('#{functions}', funcs);
+    else if (this.mode==='hermes3_llama')
+      return this.hermes2_template.replace('#{functions}', funcs);
+    else if (this.mode==='llama31')
+      return this.llama31_template.replace('#{functions}', funcs);
+    else if (this.mode==='llama32')
+      return this.llama32_template.replace('#{functions}', funcs);
+    else if (this.mode==='deepseek')
+      return this.deepseek_template.replace('#{functions}', funcs);
+    else
+      return null;
+  }
+
+  checkResponse(str) {
+    str = str.trim();
+    if (this.mode==='qwen') {
+      if (str.startsWith("<tool_call>")) {
+        const tool_call = str.replace("<tool_call>", "").replace("</tool_call>", "");
+        try {
+          const func = JSON.parse(tool_call);
+          return {func, tool_call};
+        } catch(e) {
+          console.log(e);
+        }
+      }
+//      else if (str.startsWith("```json")) { 
+//        const tool_call = str.replace(/^```json\n?\s*/, "").replace(/\s*\n?```$/, "");
+//        try {
+//          const func = JSON.parse(tool_call);
+//          return {func, tool_call}; 
+//        } catch(e) {
+//          console.log(e);
+//        }
+//      }
+    }
+    else if (this.mode==='hermes2_llama') {
+      if (str.startsWith("<tool_call>")) {
+        const tool_call = str.replace("<tool_call>", "").replace("</tool_call>", "");
+        try {
+          const func = JSON.parse(tool_call);
+          return {func, tool_call};
+        } catch(e) {
+          console.log(e);
+        }
+      }
+    }
+    else if (this.mode==='hermes3_llama') {
+      if (str.startsWith("<tool_call>")) {
+        const tool_call = str.replace("<tool_call>", "").replace("</tool_call>", "");
+        try {
+          const func = JSON.parse(tool_call);
+          return {func, tool_call};
+        } catch(e) {
+          console.log(e);
+        }
+      }
+    }
+    else if (this.mode==='llama31_0') {
+      if (str.startsWith("<tool_call>")) {
+        const tool_call = str.replace(/^\<\|python_tag\|\>\n?\s*/, "").replace("<tool_call>", "").replace("</tool_call>", "");
+        try {
+          const func = JSON.parse(tool_call);
+          if (func.parameters)
+          func["arguments"] = func.parameters;
+          return {func, tool_call};
+        } catch(e) {
+          console.log(e);
+        }
+      }
+    }
+    else if (this.mode==='llama32') {
+      if (str.startsWith("<tool_call>") || str.startsWith("<|python_tag|>") || str.startsWith("{")) {
+        const tool_call = str.replace(/^\<\|python_tag\|\>\n?\s*/, "").replace("<tool_call>", "").replace("</tool_call>", "");
+        try {
+          const func = JSON.parse(tool_call);
+          if (func.parameters)
+          func["arguments"] = func.parameters;
+          return {func, tool_call};
+        } catch(e) {
+          console.log(e);
+        }
+      }
+    }
+    else if (this.mode==='llama31') {
+      if (str.startsWith("<function>")) {
+        const tool_call = str.replace("<function>", "").replace("</function>", "");
+        try {
+          const func = JSON.parse(tool_call);
+          if (func.parameters)
+          func["arguments"] = func.parameters;
+          return {func, tool_call};
+        } catch(e) {
+          console.log(e);
+        }
+      }
+    }
+    else if (this.mode==='deepseek') {
+      const message = str.replace(/<think>.*?<\/think>/s, "").trim();
+      if (message.startsWith("<tool_call>")) {
+        const tool_call = message.replace("<tool_call>", "").replace("</tool_call>", "");
+        try {
+          const func = JSON.parse(tool_call);
+          if (func.parameters)
+          func["arguments"] = func.parameters;
+          return {func, tool_call};
+        } catch(e) {
+          console.log(e);
+        }
+      }
+    }
+    return null;
+  }
+
+  genToolResponse(func, ret) {
+    let rc = null;
+    if (this.mode==='qwen') {
+      const content = `<tool_response>\n{name:${func.name}, content:${ret} }\n</tool_response>`
+      rc = {content, tool_call_id: this.tool_call_id, role:'user'}; // Qwen2 role=user
+      this.tool_call_id++;
+    }
+    else if (this.mode==='deepseek') {
+      const content = `<tool_response>\n{name:${func.name}, content:${ret} }\n</tool_response>`
+      rc = {content, tool_call_id: this.tool_call_id, role:'user'}; // DeepSeek role=user
+      this.tool_call_id++;
+    }
+    else {
+      const content = `<tool_response>\n{name:${func.name}, content:${ret} }\n</tool_response>`
+      rc = {content, tool_call_id: this.tool_call_id, role:'tool'};
+    }
+    this.tool_call_id++;
+    return rc;
+  }
+}
 
 /****** TOOLS code **************************/
 async function fetch_wikipedia_content(searchQuery)
@@ -390,7 +633,11 @@ async function sparql_exec(query) {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
+      let res = ""
+      try {
+        res = await response.text();
+      } catch (_) {}
+      throw new Error(`HTTP error! Status: ${response.status}\n ${res}`);
     }
 
     const results = await response.json();
