@@ -200,8 +200,8 @@ const availableModels = webllm.prebuiltAppConfig.model_list
 //        || model_id.startsWith('DeepSeek-R1-Distill-Llama-')
   ));
 
-//let selectedModel = "Llama-3.1-8B-Instruct-q4f32_1-1k";
-let selectedModel = "Qwen2.5-7B-Instruct-q4f32_1-MLC";
+let selectedModel = "Llama-3.1-8B-Instruct-q4f16_1-1k";
+//let selectedModel = "Qwen2.5-7B-Instruct-q4f16_1-MLC";
 
 async function onMessageStop() {
   engine.interruptGenerate();
