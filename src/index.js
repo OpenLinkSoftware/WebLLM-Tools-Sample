@@ -229,7 +229,7 @@ async function onMessageSend() {
 
   let done = false;
   let iter = 0;
-  while(!done && item <= 3) {
+  while(!done && iter <= 3) {
     iter++;
     document.getElementById("send").disabled = true;
 
