@@ -194,7 +194,7 @@ const availableModels = webllm.prebuiltAppConfig.model_list
   .map((m) => m.model_id)
   .filter((model_id) => (
   	   model_id.startsWith('Qwen2.5-7B')
-//  	|| model_id.startsWith('Hermes-2-Pro-Llama')
+  	|| model_id.startsWith('Hermes-2-Pro-Llama')
   	|| model_id.startsWith('Hermes-3-Llama-3.1')
   	|| (model_id.startsWith('Llama-3.1-8B-') && !model_id.endsWith('-1k'))
 //        || model_id.startsWith('DeepSeek-R1-Distill-Llama-')
@@ -228,8 +228,9 @@ async function onMessageSend() {
     .setAttribute("placeholder", "Generating...");
 
   let done = false;
-
-  while(!done) {
+  let iter = 0;
+  while(!done && item <= 3) {
+    iter++;
     document.getElementById("send").disabled = true;
 
     const aiMessage = {
