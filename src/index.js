@@ -3,6 +3,53 @@ import { marked } from "https://unpkg.com/marked@15.0.7/lib/marked.esm.js";
 import DOMPurify from "https://unpkg.com/dompurify@3.2.4/dist/purify.es.mjs";
 
 
+const rules = 
+{
+    "query_processing_config": {
+        "name": "OpenLink Data Twingler",
+        "version": "0.0.1",
+        "features": {
+            "query_optimization": {
+                "SPARQL": {
+                    "max_results": "10",
+                    "example_query": "SELECT DISTINCT (SAMPLE(?s) AS ?entitySample) (COUNT(*) AS ?count) (?o as ?entityType) WHERE {?s a ?o} GROUP BY ?o ORDER BY DESC (?count) LIMIT 10",
+                    "example_query1": "SELECT (SAMPLE(?s) AS ?entitySample)  (?o as ?entityType) WHERE {?s a ?o} LIMIT 10",
+                },
+                "SPARQL-FED": {
+                    "service_block_limit": "10",
+                    "service_block_order_by": true,
+                    "query_pattern": "<NAMSPACE PREFIX DECLARATIONS> <SPARQL-SELECT-LIST> WHERE { SERVICE <SPARQL-ENDPOINT-URL> { <SPARQL-SELECT-LIST> WHERE <SPARQL-BODY> } } ",
+                    "example_query": "PREFIX dbr: <http://dbpedia.org/resource/> PREFIX dbo: <http://dbpedia.org/ontology/> SELECT * WHERE { SERVICE <http://dbpedia.org/sparql> { ?movie rdf:type dbo:Film ; dbo:director dbr:Spike_Lee . } }",
+                },
+            },
+            "error_handling": {
+                "log_errors": true,
+                "error_reporting_level": "detailed"
+            },
+        },
+        "rules": [
+            "The Query Processing Configuration Agent must ensure that query processing settings are optimized for performance and accuracy.",
+            "The agent must handle errors gracefully and provide detailed feedback for troubleshooting.",
+        ],
+        "preferences": {
+            "interaction_style": "Friendly and professional",
+            "knowledge_depth": "Deep and comprehensive",
+            "response_speed": "As quick as possible without compromising accuracy",
+            "sparqlEndpointPromptBehavior": "If a SPARQL endpoint is mentioned in a prompt, treat the query as a SPARQL-FED query and use the mentioned endpoint in addition to the default endpoint.",
+            "sparqlProcessingBehavior": "Set the default SPARQL endpoint, unless instructed otherwise, to https://linkeddata.uriburner.com/sparql; tabulate query results; limit results to 10, unless instructed otherwise.",
+            "sparqlEndpointDesignationBehavior": "When a SPARQL endpoint is designated in a prompt, it implies that more than one endpoint is involved. The designated endpoint is used in addition to the default endpoint.",
+            "sparqlFedProcessingBehavior": "Whenever I request a SPARQL query to be executed with a designated endpoint, treat the request as a SPARQL-FED request where the designated endpoint is used for the SERVICE associated with the designated query. The SERVICE block must comprise a SELECT Query with a LIMIT clause applied within the SERVICE block itself. This ensures that the limit is applied at the remote endpoint. Also, apply ORDER BY clauses where applicable.",
+            "spasqlProcessingBehavior": "Construct SPASQL queries using the pattern: <SQL SELECT LIST where each item matches a SPARQL SELECT LIST variable> FROM (SPARQL prepended to <SPARQL-SELECT-LIST> WHERE <SPARQL-BODY>) AS <ALIAS> ",
+            "spasqlFedProcessingBehavior": "Construct SPASQL queries using the pattern: <SQL SELECT LIST where each item matches a SPARQL SELECT LIST variable> FROM (SPARQL prepended to <SPARQL-SELECT-LIST> WHERE <SPARQL-BODY-WITH-SERVICE-IN-WHERE-CLAUSE>) AS <ALIAS> ",
+            "queryResultsTabulation": "Tabulate query results by default for SPARQL, SPASQL, SQL, and GraphQL."
+        }
+    },
+    "init": "As the Query Processing Configuration Agent, you should inform the user of the current query processing settings and be ready to accept commands to update or test these settings. If the user requests changes, guide them through the process and confirm the updates. Always be prepared to provide expert advice on optimizing query performance."
+}
+
+
+
+
 const tools = [
   {
     type: "function",
@@ -30,8 +77,8 @@ const tools = [
     type: "function",
     function: {
       name: "sparql_exec",
-      description: "Execute a SPARQL select query and fetch results"+
-                   "Always use this if the user is asking for execute a SPARQL select query. "+
+      description: "Execute a SPARQL or SPARQL-FED select query and fetch results"+
+                   "Always use this if the user is asking for execute a SPARQL or SPARQL-FED select query. "+
                    "If the user has a typo in their SPARQL select query, correct it before executing.",
       parameters: {
         type: "object",
@@ -81,9 +128,10 @@ async function initializeWebLLMEngine() {
   const config = {
     temperature: 0.2,
 //    top_p: 1,
-    content_window_size: 8192,
-//    sliding_window_size: 8192,
+    context_window_size: -1,
+    sliding_window_size: 8192,
     prefill_chunk_size: 8192,
+    attention_sink_size: 4096
   };
   await engine.reload(selectedModel, config);
 
@@ -119,8 +167,18 @@ async function streamingGenerating(messages, onUpdate, onFinish, onError) {
     if (tool_handler) {
        const rc = tool_handler.checkResponse(finalMessage);
        if (rc) {
-         onFinish("**func call:** "+rc.tool_call, usage);
-         return {done: false, func: rc.func};
+         if (!rc.error) {
+           if (rc.end) {
+             const aiMessage = {content: "working...", role: "assistant"};
+             appendMessage(aiMessage);
+           }
+           onFinish("**func call:** "+rc.tool_call, usage);
+           return {done: false, func: rc.func};
+         } 
+         else {
+           onFinish(finalMessage+"\n"+"Error: "+rc.error, usage);
+           return {done: false, func: rc.func, error:rc.error};
+         }
        }
     }
 
@@ -136,15 +194,14 @@ const availableModels = webllm.prebuiltAppConfig.model_list
   .map((m) => m.model_id)
   .filter((model_id) => (
   	   model_id.startsWith('Qwen2.5-7B')
-  	|| model_id.startsWith('Hermes-2-Pro-Llama')
+//  	|| model_id.startsWith('Hermes-2-Pro-Llama')
   	|| model_id.startsWith('Hermes-3-Llama-3.1')
-  	|| model_id.startsWith('Llama-3.1-8B-')
+  	|| (model_id.startsWith('Llama-3.1-8B-') && !model_id.endsWith('-1k'))
 //        || model_id.startsWith('DeepSeek-R1-Distill-Llama-')
   ));
 
 //let selectedModel = "Llama-3.1-8B-Instruct-q4f32_1-1k";
-//let selectedModel = "Qwen2.5-7B-Instruct-q4f32_1-MLC";
-let selectedModel = "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC";
+let selectedModel = "Qwen2.5-7B-Instruct-q4f32_1-MLC";
 
 async function onMessageStop() {
   engine.interruptGenerate();
@@ -204,40 +261,47 @@ async function onMessageSend() {
     done = rc.done;
 
     if (!done && tool_handler) {
-       const func = rc.func;
+       if (rc.error) {
+         messages.push({
+                 content: 'Error: '+rc.error,
+                 tool_call_id: 0,
+                 role: 'user'});
+       }
+       else {
+         const func = rc.func;
 
-       const aiMessage = {content: "working...", role: "assistant"};
-       appendMessage(aiMessage);
+         const aiMessage = {content: "working...", role: "assistant"};
+         appendMessage(aiMessage);
 
-       let toolResp = null;
+         let toolResp = null;
 
-       try {
-         if (func && func.name === "fetch_wikipedia_content") {
-            const ret = await fetch_wikipedia_content(func.arguments.search_query);
-            toolResp = tool_handler.genToolResponse(func, JSON.stringify(ret));
-         } 
-         else if (func && func.name === "sparql_exec") {
-            const ret = await sparql_exec(func.arguments.query);
-            toolResp = tool_handler.genToolResponse(func, JSON.stringify(ret));
-         } 
-         else {
-            const content = 'Error: Unknown function '+func?.name;
+         try {
+           if (func && func.name === "fetch_wikipedia_content") {
+             const ret = await fetch_wikipedia_content(func.arguments.search_query);
+             toolResp = tool_handler.genToolResponse(func, JSON.stringify(ret));
+           } 
+           else if (func && func.name === "sparql_exec") {
+             const ret = await sparql_exec(func.arguments.query);
+             toolResp = tool_handler.genToolResponse(func, JSON.stringify(ret));
+           } 
+           else {
+             const content = 'Error: Unknown function '+func?.name;
+             toolResp = tool_handler.genToolResponse(func, JSON.stringify(content));
+           }
+
+         } catch (e) {
+            const content = 'Error: '+e.toString()
             toolResp = tool_handler.genToolResponse(func, JSON.stringify(content));
          }
 
-       } catch (e) {
-            content = 'Error: '+e.toString()
-            toolResp = tool_handler.genToolResponse(func, JSON.stringify(content));
-       }
-
-       messages.push({
+         messages.push({
                  content: toolResp.content,
                  tool_call_id: toolResp ? toolResp.tool_call_id : 0,
                  role: toolResp.role});
-       updateLastMessage("**func result:** "+toolResp.content);
+         updateLastMessage("**func result:** "+toolResp.content);
+       }
+  
     }
-//    console.log(messages);
-//    console.log("------")
   }
   document.getElementById("stop").disabled = true;
 }
@@ -311,6 +375,11 @@ class ToolHanler {
 +'<tool_call>\n'
 +'{"name": <function-name>, "arguments": <args-json-object>}\n'
 +'</tool_call>\n'
++'You are a helpful Assistant.\n'
++'Do not generate function results.\n'
++'Always do real call of functions, when it is required.\n'
++'Execute only one function per time.\n';
+
 
   hermes2_template =
  `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags.`
@@ -320,7 +389,13 @@ class ToolHanler {
 +` </tools>.\n Use the following pydantic model json schema for each tool call you will make:`
 +` {"properties": {"arguments": {"title": "Arguments", "type": "object"}, "name": {"title": "Name", "type": "string"}}, "required": ["arguments", "name"], "title": "FunctionCall", "type": "object"} `
 +`For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n`
-+`<tool_call>\n{"arguments": <args-dict>, "name": <function-name>}\n</tool_call>`;
++`<tool_call>\n{"arguments": <args-dict>, "name": <function-name>}\n</tool_call>\n`
++'You are a helpful Assistant.\n'
++'Do not generate function results.\n'
++'Always do real call of functions, when it is required.\n'
++'Execute only one function per time.\n';
+
+
 
   hermes3_template =
  `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. `
@@ -331,7 +406,12 @@ class ToolHanler {
 +`Use the following pydantic model json schema for each tool call you will make:`
 +` {"properties": {"name": {"title": "Name", "type": "string"}, "arguments": {"title": "Arguments", "type": "object"}}, "required": ["name", "arguments"], "title": "FunctionCall", "type": "object"}}\n\n`
 +`For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n\n`
-+`<tool_call>\n{"name": <function-name>, "arguments": <args-dict>}\n</tool_call>\n`;
++`<tool_call>\n{"name": <function-name>, "arguments": <args-dict>}\n</tool_call>\n\n`
++'You are a helpful Assistant.\n'
++'Do not generate function results.\n'
++'Always do real call of functions, when it is required.\n'
++'Execute only one function per time\n';
+
 
 
 
@@ -343,7 +423,12 @@ class ToolHanler {
 +'Respond in the format\n <tool_call>\n{"name": function name, "parameters": dictionary of argument name and its value}\n</tool_call> .\n\n'
 //+'Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}.'
 +'Do not use variables.\n\n'
-+'#{functions}\n'
++'#{functions}\n\n'
++'You are a helpful Assistant.\n'
++'Do not generate function results.\n'
++'Always do real call of functions, when it is required.\n'
++'Execute only one function per time.\n';
+
 
 
   llama31_template =
@@ -365,7 +450,10 @@ class ToolHanler {
 +'- When calling a function, do NOT add any other words, ONLY the function calling\n'
 +'- Put the entire function call reply on one line\n'
 +'- Always add your sources when using search results to answer the user query\n'
-+'You are a helpful Assistant.';
++'You are a helpful Assistant.\n'
++'Do not generate function results.\n'
++'Always do real call of functions, when it is required.\n'
++'Execute only one function per time.\n';
   
    deepseek_template =
  'Cutting Knowledge Date: December 2023\n'
@@ -385,7 +473,13 @@ class ToolHanler {
 +'- When calling a function, do NOT add any other words, ONLY the function calling\n'
 +'- Put the entire function call reply on one line\n'
 +'- Always add your sources when using search results to answer the user query\n'
-+'You are a helpful Assistant.';
++'You are a helpful Assistant.\n'
++'Do not generate function results.\n'
++'Always do real call of functions, when it is required\n'
++'Execute only one function per time\n';
+
+  rexp_tool_call = /<tool_call>[\s\S]*<\/tool_call>$/;
+  rexp_function = /<function>[\s\S]*<\/function>$/;
 
   constructor(model_id) {
     if (model_id.startsWith('Qwen2.5'))
@@ -406,122 +500,84 @@ class ToolHanler {
   }
   
   createSystemPrompt(tools) {
+    let sys_template = "";
     let funcs = "";
     for(const t of tools)
        funcs += JSON.stringify(t, '\n', 2)+'\n\n';
 
     if (this.mode==='qwen')
 //      return this.qwen_template.replace('#{functions}', JSON.stringify(tools, '\n', 2));
-      return this.qwen_template.replace('#{functions}', funcs);
+      sys_template = this.qwen_template.replace('#{functions}', funcs);
     else if (this.mode==='hermes2_llama')
-      return this.hermes2_template.replace('#{functions}', funcs);
+      sys_template = this.hermes2_template.replace('#{functions}', funcs);
     else if (this.mode==='hermes3_llama')
-      return this.hermes2_template.replace('#{functions}', funcs);
+      sys_template = this.hermes2_template.replace('#{functions}', funcs);
     else if (this.mode==='llama31')
-      return this.llama31_template.replace('#{functions}', funcs);
+      sys_template = this.llama31_template.replace('#{functions}', funcs);
     else if (this.mode==='llama32')
-      return this.llama32_template.replace('#{functions}', funcs);
+      sys_template = this.llama32_template.replace('#{functions}', funcs);
     else if (this.mode==='deepseek')
-      return this.deepseek_template.replace('#{functions}', funcs);
-    else
-      return null;
+      sys_template = this.deepseek_template.replace('#{functions}', funcs);
+
+    return sys_template + `\n\n\n ${JSON.stringify(rules, '\n', 2)}\n\n`
   }
 
   checkResponse(str) {
+    let tool_call = null;
+    let is_end = false;
+
     str = str.trim();
-    if (this.mode==='qwen') {
+    const tool_end = str.match(this.rexp_tool_call);
+    const function_end = str.match(this.rexp_function);
+
+
+    if (this.mode==='qwen' || this.mode==='hermes2_llama' || this.mode==='hermes3_llama') {
       if (str.startsWith("<tool_call>")) {
-        const tool_call = str.replace("<tool_call>", "").replace("</tool_call>", "");
-        try {
-          const func = JSON.parse(tool_call);
-          return {func, tool_call};
-        } catch(e) {
-          console.log(e);
-        }
+        tool_call = str.replace("<tool_call>", "").replace("</tool_call>", "");
       }
-//      else if (str.startsWith("```json")) { 
-//        const tool_call = str.replace(/^```json\n?\s*/, "").replace(/\s*\n?```$/, "");
-//        try {
-//          const func = JSON.parse(tool_call);
-//          return {func, tool_call}; 
-//        } catch(e) {
-//          console.log(e);
-//        }
-//      }
-    }
-    else if (this.mode==='hermes2_llama') {
-      if (str.startsWith("<tool_call>")) {
-        const tool_call = str.replace("<tool_call>", "").replace("</tool_call>", "");
-        try {
-          const func = JSON.parse(tool_call);
-          return {func, tool_call};
-        } catch(e) {
-          console.log(e);
-        }
-      }
-    }
-    else if (this.mode==='hermes3_llama') {
-      if (str.startsWith("<tool_call>")) {
-        const tool_call = str.replace("<tool_call>", "").replace("</tool_call>", "");
-        try {
-          const func = JSON.parse(tool_call);
-          return {func, tool_call};
-        } catch(e) {
-          console.log(e);
-        }
-      }
-    }
-    else if (this.mode==='llama31_0') {
-      if (str.startsWith("<tool_call>")) {
-        const tool_call = str.replace(/^\<\|python_tag\|\>\n?\s*/, "").replace("<tool_call>", "").replace("</tool_call>", "");
-        try {
-          const func = JSON.parse(tool_call);
-          if (func.parameters)
-          func["arguments"] = func.parameters;
-          return {func, tool_call};
-        } catch(e) {
-          console.log(e);
-        }
+      else if (tool_end) {
+        tool_call = tool_end[0].replace("<tool_call>", "").replace("</tool_call>", "");
+        is_end = true;
       }
     }
     else if (this.mode==='llama32') {
       if (str.startsWith("<tool_call>") || str.startsWith("<|python_tag|>") || str.startsWith("{")) {
-        const tool_call = str.replace(/^\<\|python_tag\|\>\n?\s*/, "").replace("<tool_call>", "").replace("</tool_call>", "");
-        try {
-          const func = JSON.parse(tool_call);
-          if (func.parameters)
-          func["arguments"] = func.parameters;
-          return {func, tool_call};
-        } catch(e) {
-          console.log(e);
-        }
+        tool_call = str.replace(/^\<\|python_tag\|\>\n?\s*/, "").replace("<tool_call>", "").replace("</tool_call>", "");
+      }
+      else if (tool_end) {
+        tool_call = tool_end[0].replace(/^\<\|python_tag\|\>\n?\s*/, "").replace("<tool_call>", "").replace("</tool_call>", "");
+        is_end = true;
       }
     }
     else if (this.mode==='llama31') {
       if (str.startsWith("<function>")) {
-        const tool_call = str.replace("<function>", "").replace("</function>", "");
-        try {
-          const func = JSON.parse(tool_call);
-          if (func.parameters)
-          func["arguments"] = func.parameters;
-          return {func, tool_call};
-        } catch(e) {
-          console.log(e);
-        }
+        tool_call = str.replace("<function>", "").replace("</function>", "");
+      }
+      else if (function_end) {
+        tool_call = function_end[0].replace("<function>", "").replace("</function>", "");
+        is_end = true;
       }
     }
     else if (this.mode==='deepseek') {
       const message = str.replace(/<think>.*?<\/think>/s, "").trim();
       if (message.startsWith("<tool_call>")) {
-        const tool_call = message.replace("<tool_call>", "").replace("</tool_call>", "");
-        try {
-          const func = JSON.parse(tool_call);
-          if (func.parameters)
+        tool_call = message.replace("<tool_call>", "").replace("</tool_call>", "");
+      }
+      else if (tool_end) {
+        tool_call = tool_end[0].replace("<tool_call>", "").replace("</tool_call>", "");
+        is_end = true;
+      }
+    }
+
+    if (tool_call) {
+      try {
+        const func = JSON.parse(tool_call);
+        if (func.parameters)
           func["arguments"] = func.parameters;
-          return {func, tool_call};
-        } catch(e) {
-          console.log(e);
-        }
+        return {func, tool_call, is_end};
+      } catch(e) {
+        console.log(e);
+        return {error: e.toString()}
       }
     }
     return null;
