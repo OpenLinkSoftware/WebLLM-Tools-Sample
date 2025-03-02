@@ -48,8 +48,6 @@ const rules =
 }
 
 
-
-
 const tools = [
   {
     type: "function",
@@ -125,8 +123,14 @@ async function initializeWebLLMEngine() {
   document.getElementById("user-input").textContent = 'Write and execute a sample SPARQL query'
   document.getElementById("download-status").classList.remove("hidden");
   selectedModel = document.getElementById("model-selection").value;
+
+  let temperature = 0.5;
+
+  if (selectedModel.startsWith('Llama-3.1-'))
+    temperature = 0.4;
+
   const config = {
-    temperature: 0.6,
+    temperature: temperature,
     top_p: 0.9,
     context_window_size: -1,
     sliding_window_size: 8192,
@@ -194,14 +198,13 @@ const availableModels = webllm.prebuiltAppConfig.model_list
   .map((m) => m.model_id)
   .filter((model_id) => (
   	   model_id.startsWith('Qwen2.5-7B')
-//  	|| model_id.startsWith('Hermes-2-Pro-Llama')
   	|| model_id.startsWith('Hermes-3-Llama-3.1')
   	|| (model_id.startsWith('Llama-3.1-8B-') && !model_id.endsWith('-1k'))
 //        || model_id.startsWith('DeepSeek-R1-Distill-Llama-')
   ));
 
-let selectedModel = "Llama-3.1-8B-Instruct-q4f16_1-1k";
-//let selectedModel = "Qwen2.5-7B-Instruct-q4f16_1-MLC";
+//let selectedModel = "Llama-3.1-8B-Instruct-q4f16_1-1k";
+let selectedModel = "Qwen2.5-7B-Instruct-q4f16_1-MLC";
 
 async function onMessageStop() {
   engine.interruptGenerate();
@@ -379,22 +382,7 @@ class ToolHanler {
 +'You are a helpful Assistant.\n'
 +'Do not generate function results.\n'
 +'Always do real call of functions, when it is required.\n'
-+'Execute only one function per time.\n';
-
-
-  hermes2_template =
- `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags.`
-+` You may call one or more functions to assist with the user query. `
-+`Don't make assumptions about what values to plug into functions. Here are the available tools: <tools>\n`
-+' #{functions} \n\n'
-+` </tools>.\n Use the following pydantic model json schema for each tool call you will make:`
-+` {"properties": {"arguments": {"title": "Arguments", "type": "object"}, "name": {"title": "Name", "type": "string"}}, "required": ["arguments", "name"], "title": "FunctionCall", "type": "object"} `
-+`For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n`
-+`<tool_call>\n{"arguments": <args-dict>, "name": <function-name>}\n</tool_call>\n`
-+'You are a helpful Assistant.\n'
-+'Do not generate function results.\n'
-+'Always do real call of functions, when it is required.\n'
-+'Execute only one function per time.\n';
++'Execute only one function per time.\n'
 
 
 
@@ -428,8 +416,7 @@ class ToolHanler {
 +'You are a helpful Assistant.\n'
 +'Do not generate function results.\n'
 +'Always do real call of functions, when it is required.\n'
-+'Execute only one function per time.\n';
-
++'Execute only one function per time.\n'
 
 
   llama31_template =
@@ -454,8 +441,9 @@ class ToolHanler {
 +'You are a helpful Assistant.\n'
 +'Do not generate function results.\n'
 +'Always do real call of functions, when it is required.\n'
-+'Execute only one function per time.\n';
-  
++'Execute only one function per time.\n'
+
+
    deepseek_template =
  'Cutting Knowledge Date: December 2023\n'
 +'Today Date: 23 Jul 2024\n\n'
@@ -485,8 +473,6 @@ class ToolHanler {
   constructor(model_id) {
     if (model_id.startsWith('Qwen2.5'))
       this.mode = 'qwen';
-    else if (model_id.startsWith('Hermes-2-Pro-'))
-      this.mode = 'hermes2_llama'
     else if (model_id.startsWith('Hermes-3-Llama'))
       this.mode = 'hermes3_llama'
     else if (model_id.startsWith('Llama-3.1-'))
@@ -507,10 +493,7 @@ class ToolHanler {
        funcs += JSON.stringify(t, '\n', 2)+'\n\n';
 
     if (this.mode==='qwen')
-//      return this.qwen_template.replace('#{functions}', JSON.stringify(tools, '\n', 2));
       sys_template = this.qwen_template.replace('#{functions}', funcs);
-    else if (this.mode==='hermes2_llama')
-      sys_template = this.hermes2_template.replace('#{functions}', funcs);
     else if (this.mode==='hermes3_llama')
       sys_template = this.hermes2_template.replace('#{functions}', funcs);
     else if (this.mode==='llama31')
@@ -520,7 +503,7 @@ class ToolHanler {
     else if (this.mode==='deepseek')
       sys_template = this.deepseek_template.replace('#{functions}', funcs);
 
-    return sys_template + `\n\n\n ${JSON.stringify(rules, '\n', 2)}\n\n`
+    return sys_template + `\n\n ${JSON.stringify(rules, '\n', 2)}\n`
   }
 
   checkResponse(str) {
@@ -532,7 +515,7 @@ class ToolHanler {
     const function_end = str.match(this.rexp_function);
 
 
-    if (this.mode==='qwen' || this.mode==='hermes2_llama' || this.mode==='hermes3_llama') {
+    if (this.mode==='qwen' || this.mode==='hermes3_llama') {
       if (str.startsWith("<tool_call>")) {
         tool_call = str.replace("<tool_call>", "").replace("</tool_call>", "");
       }
