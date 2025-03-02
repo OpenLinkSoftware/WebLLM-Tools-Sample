@@ -126,8 +126,8 @@ async function initializeWebLLMEngine() {
   document.getElementById("download-status").classList.remove("hidden");
   selectedModel = document.getElementById("model-selection").value;
   const config = {
-    temperature: 0.2,
-//    top_p: 1,
+    temperature: 0.6,
+    top_p: 0.9,
     context_window_size: -1,
     sliding_window_size: 8192,
     prefill_chunk_size: 8192,
@@ -194,7 +194,7 @@ const availableModels = webllm.prebuiltAppConfig.model_list
   .map((m) => m.model_id)
   .filter((model_id) => (
   	   model_id.startsWith('Qwen2.5-7B')
-  	|| model_id.startsWith('Hermes-2-Pro-Llama')
+//  	|| model_id.startsWith('Hermes-2-Pro-Llama')
   	|| model_id.startsWith('Hermes-3-Llama-3.1')
   	|| (model_id.startsWith('Llama-3.1-8B-') && !model_id.endsWith('-1k'))
 //        || model_id.startsWith('DeepSeek-R1-Distill-Llama-')
@@ -229,7 +229,7 @@ async function onMessageSend() {
 
   let done = false;
   let iter = 0;
-  while(!done && iter <= 3) {
+  while(!done && iter < 3) {
     iter++;
     document.getElementById("send").disabled = true;
 
@@ -485,7 +485,7 @@ class ToolHanler {
   constructor(model_id) {
     if (model_id.startsWith('Qwen2.5'))
       this.mode = 'qwen';
-    else if (model_id.startsWith('Hermes-2-Pro-Llama'))
+    else if (model_id.startsWith('Hermes-2-Pro-'))
       this.mode = 'hermes2_llama'
     else if (model_id.startsWith('Hermes-3-Llama'))
       this.mode = 'hermes3_llama'
