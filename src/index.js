@@ -180,6 +180,21 @@ appConfig.model_list.push(
 
 appConfig.model_list.push(
     {
+      model: "https://huggingface.co/smalinin/Qwen2.5-14B-Instruct_q4f16_2-MLC",
+      model_id: "Qwen2.5-14B-Instruct_q4f16_2-MLC",
+      model_lib: "https://huggingface.co/smalinin/Qwen2.5-14B-Instruct_q4f16_2-MLC/resolve/main/Qwen2.5-14B-Instruct_q4f16_2-webgpu.wasm",
+      low_resource_required: false,
+      vram_required_MB: 13020.0,
+      required_features: ["shader-f16"],
+      overrides: {
+        context_window_size: 4096,
+        prefill_chunk_size: 2048
+      },
+    });
+
+
+appConfig.model_list.push(
+    {
       model: "https://huggingface.co/smalinin/Qwen2.5-14B-Instruct_q4f32_1-MLC",
       model_id: "Qwen2.5-14B-Instruct_q4f32_1-MLC",
       model_lib: "https://huggingface.co/smalinin/Qwen2.5-14B-Instruct_q4f32_1-MLC/resolve/main/Qwen2.5-14B-Instruct_q4f32_1-webgpu.wasm",
