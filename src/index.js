@@ -114,9 +114,87 @@ function updateEngineInitProgressCallback(report) {
   document.getElementById("download-status").textContent = report.text;
 }
 
+const appConfig = {model_list:[]};
+
+for(const m of webllm.prebuiltAppConfig.model_list) {
+  if (m.model_id.startsWith('Qwen2.5-7B') 
+      || (m.model_id.startsWith('Llama-3.1-8B-') && !m.model_id.endsWith('-1k'))
+      || m.model_id.startsWith('Hermes-3-Llama-3.1'))
+    appConfig.model_list.push(m);
+}
+
+appConfig.model_list.push(
+    {
+      model: "https://huggingface.co/smalinin/Llama-3.1-Storm-8B_q4f32_1-MLC",
+      model_id: "Llama-3.1-Storm-8B_q4f32_1-MLC",
+      model_lib: "https://huggingface.co/smalinin/Llama-3.1-Storm-8B_q4f32_1-MLC/resolve/main/Llama-3.1-Storm-8B_q4f32_1-webgpu.wasm",
+      low_resource_required: false,
+      vram_required_MB: 5750,
+      overrides: {
+        context_window_size: 4096,
+        prefill_chunk_size: 4096
+      },
+    });
+
+appConfig.model_list.push(
+    {
+      model: "https://huggingface.co/smalinin/gorilla-openfunctions-v2_q4f32_1-MLC",
+      model_id: "gorilla-openfunctions-v2-q4f32_1-MLC",
+      model_lib: "https://huggingface.co/smalinin/gorilla-openfunctions-v2_q4f32_1-MLC/resolve/main/gorilla-openfunctions-v2_q4f32_1-webgpu.wasm",
+      vram_required_MB: 5660.67,
+      low_resource_required: false,
+      overrides: {
+        context_window_size: 4096,
+        prefill_chunk_size: 4096
+      },
+    });
+
+appConfig.model_list.push(
+    {
+      model: "https://huggingface.co/smalinin/Qwen2.5-14B-Instruct_q3f16_1-MLC",
+      model_id: "Qwen2.5-14B-Instruct_q3f16_1-MLC",
+      model_lib: "https://huggingface.co/smalinin/Qwen2.5-14B-Instruct_q3f16_1-MLC/resolve/main/Qwen2.5-14B-Instruct_q3f16_1-webgpu.wasm",
+      low_resource_required: false,
+      vram_required_MB: 9300.0,
+      required_features: ["shader-f16"],
+      overrides: {
+        context_window_size: 4096,
+        prefill_chunk_size: 2048
+      },
+    });
+
+appConfig.model_list.push(
+    {
+      model: "https://huggingface.co/smalinin/Qwen2.5-14B-Instruct_q4f16_1-MLC",
+      model_id: "Qwen2.5-14B-Instruct_q4f16_1-MLC",
+      model_lib: "https://huggingface.co/smalinin/Qwen2.5-14B-Instruct_q4f16_1-MLC/resolve/main/Qwen2.5-14B-Instruct_q4f16_1-webgpu.wasm",
+      low_resource_required: false,
+      vram_required_MB: 10900.0,
+      required_features: ["shader-f16"],
+      overrides: {
+        context_window_size: 4096,
+        prefill_chunk_size: 2048
+      },
+    });
+
+
+appConfig.model_list.push(
+    {
+      model: "https://huggingface.co/smalinin/Qwen2.5-14B-Instruct_q4f32_1-MLC",
+      model_id: "Qwen2.5-14B-Instruct_q4f32_1-MLC",
+      model_lib: "https://huggingface.co/smalinin/Qwen2.5-14B-Instruct_q4f32_1-MLC/resolve/main/Qwen2.5-14B-Instruct_q4f32_1-webgpu.wasm",
+      low_resource_required: false,
+      vram_required_MB: 12000.0,
+      overrides: {
+        context_window_size: 4096,
+        prefill_chunk_size: 4096
+      },
+    });
+
 
 // Create engine instance
-const engine = new webllm.MLCEngine();
+const engine = new webllm.MLCEngine({appConfig: appConfig});
+
 engine.setInitProgressCallback(updateEngineInitProgressCallback);
 
 async function initializeWebLLMEngine() {
@@ -194,16 +272,8 @@ async function streamingGenerating(messages, onUpdate, onFinish, onError) {
 }
 
 /*************** UI logic ***************/
-const availableModels = webllm.prebuiltAppConfig.model_list
-  .map((m) => m.model_id)
-  .filter((model_id) => (
-  	   model_id.startsWith('Qwen2.5-7B')
-  	|| model_id.startsWith('Hermes-3-Llama-3.1')
-  	|| (model_id.startsWith('Llama-3.1-8B-') && !model_id.endsWith('-1k'))
-//        || model_id.startsWith('DeepSeek-R1-Distill-Llama-')
-  ));
+const availableModels = appConfig.model_list.map((m) => m.model_id);
 
-//let selectedModel = "Llama-3.1-8B-Instruct-q4f16_1-1k";
 let selectedModel = "Qwen2.5-7B-Instruct-q4f16_1-MLC";
 
 async function onMessageStop() {
@@ -443,6 +513,23 @@ class ToolHanler {
 +'Always do real call of functions, when it is required.\n'
 +'Execute only one function per time.\n'
 
+  llama31_storm_template =
+ `You are a function calling AI model. You may call one or more functions to assist with the user query.`
++` Don't make assumptions about what values to plug into function. The user may use the terms function`
++` calling or tool use interchangeably.\n\n`
++`Here are the available functions:\n`
++`<tools>#{functions_list}</tools>\n\n`
++`For each function call return a json object with function name and arguments within <tool_call></tool_call>`
++` XML tags in the format:\n`
++`<tool_call>{"tool_name": <function-name>, "tool_arguments": <args-dict>}</tool_call>`
+
+  gorilla_template = 
+ `You are an AI programming assistant, utilizing the Gorilla LLM model, developed by Gorilla LLM,`
++` and you only answer questions related to computer science. For politically sensitive questions,`
++` security and privacy issues, and other non-computer science questions, you will refuse to answer.`
++`### Instruction\n`
++`#{functions_list}\n`
+
 
    deepseek_template =
  'Cutting Knowledge Date: December 2023\n'
@@ -475,12 +562,16 @@ class ToolHanler {
       this.mode = 'qwen';
     else if (model_id.startsWith('Hermes-3-Llama'))
       this.mode = 'hermes3_llama'
+    else if (model_id.startsWith('Llama-3.1-Storm'))
+      this.mode = 'llama31_storm'
     else if (model_id.startsWith('Llama-3.1-'))
       this.mode = 'llama31'
     else if (model_id.startsWith('Llama-3.2-'))
       this.mode = 'llama32'
     else if (model_id.startsWith('DeepSeek-R1-Distill-Llama'))
       this.mode = 'deepseek'
+    else if (model_id.startsWith('gorilla'))
+      this.mode = 'gorilla'
     else
       this.mode = 'llama31';
     this.tool_call_id=0;
@@ -498,9 +589,13 @@ class ToolHanler {
       sys_template = this.hermes2_template.replace('#{functions}', funcs);
     else if (this.mode==='llama31')
       sys_template = this.llama31_template.replace('#{functions}', funcs);
+    else if (this.mode==='llama31_storm')
+      sys_template = this.llama31_storm_template.replace('#{functions_list}', JSON.stringify(tools,'\n', 2));
     else if (this.mode==='llama32')
       sys_template = this.llama32_template.replace('#{functions}', funcs);
     else if (this.mode==='deepseek')
+      sys_template = this.deepseek_template.replace('#{functions}', funcs);
+    else if (this.mode==='gorilla')
       sys_template = this.deepseek_template.replace('#{functions}', funcs);
 
     return sys_template + `\n\n ${JSON.stringify(rules, '\n', 2)}\n`
@@ -533,6 +628,15 @@ class ToolHanler {
         is_end = true;
       }
     }
+    else if (this.mode==='llama31_storm') {
+      if (str.startsWith("<tool_call>")) {
+        tool_call = str.replace("<tool_call>", "").replace("</tool_call>", "");
+      }
+      else if (tool_end) {
+        tool_call = tool_end[0].replace("<tool_call>", "").replace("</tool_call>", "");
+        is_end = true;
+      }
+    }
     else if (this.mode==='llama31') {
       if (str.startsWith("<function>")) {
         tool_call = str.replace("<function>", "").replace("</function>", "");
@@ -552,12 +656,37 @@ class ToolHanler {
         is_end = true;
       }
     }
+    else if (this.mode==='gorilla') {
+      if (str.startsWith("<<function>>")) {
+        tool_call = str.replace("<<function>>", "").trim();
+      }
+      else if (function_end) {
+        tool_call = function_end[0].replace("<<function>>", "").trim();
+        is_end = true;
+      }
+      if (tool_call) {
+        let i = tool_call.indexOf('(')
+        if (i!=-1) {
+          const fname = tool_call.substring(0, i);
+          const body = this.convertToJSON(tool_call.substring (i))
+          tool_call = `{"name":"${fname}", "arguments":${body}}`
+        }
+      }
+      console.log(tool_call)
+    }
 
     if (tool_call) {
       try {
         const func = JSON.parse(tool_call);
+
+        if (func.tool_name)
+          func["name"] = func.tool_name;
+        if (func.tool_arguments)
+          func["arguments"] = func.tool_arguments;
+
         if (func.parameters)
           func["arguments"] = func.parameters;
+
         return {func, tool_call, is_end};
       } catch(e) {
         console.log(e);
@@ -586,7 +715,77 @@ class ToolHanler {
     this.tool_call_id++;
     return rc;
   }
+
+  
+  convertToJSON(input) {
+    // Remove the surrounding parentheses
+    let content = input.slice(1, -1);
+
+    // Initialize an empty object to store the parsed data
+    let result = {};
+    let key = '';
+    let value = '';
+    let inQuotes = false;
+    let escapeNext = false;
+
+    let i = 0;
+    while (i < content.length) {
+        const char = content[i];
+
+        if (inQuotes) {
+            if (char === '"' && !escapeNext) {
+                inQuotes = false;
+            } else if (char === '\\' && !escapeNext) {
+                escapeNext = true;
+            } else {
+                value += char;
+                escapeNext = false;
+            }
+        } else if (char === '=') {
+            key = content.slice(0, i).trim();
+            value = '';
+        } else if (char === ',') {
+            value = value.trim();
+            if (value.startsWith('"') && value.endsWith('"')) {
+                value = value.slice(1, -1).replace(/\\"/g, '"');
+            } else if (value.startsWith("'") && value.endsWith("'")) {
+                value = value.slice(1, -1).replace(/\\"/g, '"');
+            } else if (value === 'true' || value === 'false') {
+                value = value === 'true';
+            } else if (!isNaN(value)) {
+                value = Number(value);
+            }
+            result[key] = value;
+            key = '';
+            value = '';
+        } else if (char === '"') {
+            inQuotes = true;
+        } else {
+            value += char;
+        }
+
+        i++;
+    }
+
+    // Handle the last key-value pair
+    value = value.trim();
+    if (value.startsWith('"') && value.endsWith('"')) {
+        value = value.slice(1, -1).replace(/\\"/g, '"');
+    } else if (value.startsWith("'") && value.endsWith("'")) {
+        value = value.slice(1, -1).replace(/\\"/g, '"');
+    } else if (value === 'true' || value === 'false') {
+        value = value === 'true';
+    } else if (!isNaN(value)) {
+        value = Number(value);
+    }
+    result[key] = value;
+
+    return JSON.stringify(result);
+  }
+
 }
+
+
 
 /****** TOOLS code **************************/
 async function fetch_wikipedia_content(searchQuery)
