@@ -590,7 +590,7 @@ class ToolHanler {
     if (this.mode==='qwen')
       sys_template = this.qwen_template.replace('#{functions}', funcs);
     else if (this.mode==='hermes3_llama')
-      sys_template = this.hermes2_template.replace('#{functions}', funcs);
+      sys_template = this.hermes3_template.replace('#{functions}', funcs);
     else if (this.mode==='llama31')
       sys_template = this.llama31_template.replace('#{functions}', funcs);
     else if (this.mode==='llama31_storm')
