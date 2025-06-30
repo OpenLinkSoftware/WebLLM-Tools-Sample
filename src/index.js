@@ -276,7 +276,8 @@ async function streamingGenerating(messages, onUpdate, onFinish, onError) {
 /*************** UI logic ***************/
 const availableModels = appConfig.model_list.map((m) => m.model_id);
 
-let selectedModel = "Qwen2.5-7B-Instruct-q4f16_1-MLC";
+//let selectedModel = "Qwen2.5-7B-Instruct-q4f16_1-MLC";
+let selectedModel = "Qwen3-8B-q4f16_1-MLC";
 
 async function onMessageStop() {
   engine.interruptGenerate();
