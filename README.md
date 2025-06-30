@@ -66,6 +66,6 @@ Now it works with next model:
 - Llama-3.1-8B-Instruct
 - Hermes-3-Llama-3.1-8B
 
-Best results is with `Qwen3-8B`, `Qwen2.5-14b`, `Qwen3-4B`
+Best results is with `Qwen3-8B`, `Qwen2.5-14b`, `Qwen3-4B` (for Linux use models with suffix **q4f32**)
 
 
