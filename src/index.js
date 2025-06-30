@@ -1,4 +1,4 @@
-import * as webllm from "https://unpkg.com/@mlc-ai/web-llm@0.2.78";
+import * as webllm from "https://unpkg.com/@mlc-ai/web-llm@0.2.79";
 import { marked } from "https://unpkg.com/marked@15.0.7/lib/marked.esm.js";
 import DOMPurify from "https://unpkg.com/dompurify@3.2.4/dist/purify.es.mjs";
 
@@ -119,7 +119,8 @@ const appConfig = {model_list:[]};
 for(const m of webllm.prebuiltAppConfig.model_list) {
   if (m.model_id.startsWith('Qwen2.5-7B') 
       || (m.model_id.startsWith('Llama-3.1-8B-') && !m.model_id.endsWith('-1k'))
-      || m.model_id.startsWith('Hermes-3-Llama-3.1'))
+      || m.model_id.startsWith('Hermes-3-Llama-3.1')
+      || m.model_id.startsWith('Qwen3-8B'))
     appConfig.model_list.push(m);
 }
 
@@ -559,6 +560,8 @@ class ToolHanler {
 
   constructor(model_id) {
     if (model_id.startsWith('Qwen2.5'))
+      this.mode = 'qwen';
+    else if (model_id.startsWith('Qwen3'))
       this.mode = 'qwen';
     else if (model_id.startsWith('Hermes-3-Llama'))
       this.mode = 'hermes3_llama'
