@@ -59,10 +59,13 @@ const tools = [
 
 Sample of using tool calls with Web LLM.
 Now it works with next model:
+- Qwen3-8B
+- Qwen3-4B
 - Qwen2.5-7B-Instruct
+- Qwen2.5-14B-Instruct
 - Llama-3.1-8B-Instruct
 - Hermes-3-Llama-3.1-8B
 
-Best results is with `Qwen2.5-7B-Instruct` and `Llama-3.1-8B-Instruct`
+Best results is with `Qwen3-8B`, `Qwen2.5-14b`, `Qwen3-4B`
 
 
