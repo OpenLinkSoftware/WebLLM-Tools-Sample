@@ -1,5 +1,9 @@
 # WebLLM-Tools-Sample
-Sample of using tools with WebLLM (Note it works only in browsers with WebGPU support and you must have at last 6Gb of free VRAM).
+Sample of using tools with WebLLM 
+(Note it works only in browsers with WebGPU support and you must have:
+- Qwen3-1.7B at last 2Gb of free VRAM
+- Qwen3-4B at last 4Gb of free VRAM
+).
 Tested on Chrome and Brave on MSWindows and macOS
 
 [Demo App](https://openlinksoftware.github.io/WebLLM-Tools-Sample/src/index.html)
@@ -61,11 +65,12 @@ Sample of using tool calls with Web LLM.
 Now it works with next model:
 - Qwen3-8B
 - Qwen3-4B
+- Qwen3-1.7B
 - Qwen2.5-7B-Instruct
 - Qwen2.5-14B-Instruct
 - Llama-3.1-8B-Instruct
 - Hermes-3-Llama-3.1-8B
 
-Best results is with `Qwen3-8B`, `Qwen2.5-14b`, `Qwen3-4B` (for Linux use models with suffix **q4f32**)
+Best results is with `Qwen3-8B`, `Qwen2.5-14b`, `Qwen3-4B` , `Qwen3-1.7B` (for Linux use models with suffix **q4f32**)
 
 

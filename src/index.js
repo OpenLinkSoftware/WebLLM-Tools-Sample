@@ -120,7 +120,6 @@ for(const m of webllm.prebuiltAppConfig.model_list) {
   if (m.model_id.startsWith('Qwen2.5-7B') 
       || (m.model_id.startsWith('Llama-3.1-8B-') && !m.model_id.endsWith('-1k'))
       || m.model_id.startsWith('Hermes-3-Llama-3.1')
-      || m.model_id.startsWith('Qwen3-0.6B')
       || m.model_id.startsWith('Qwen3-1.7B')
       || m.model_id.startsWith('Qwen3-4B')
       || m.model_id.startsWith('Qwen3-8B'))
@@ -279,7 +278,8 @@ async function streamingGenerating(messages, onUpdate, onFinish, onError) {
 const availableModels = appConfig.model_list.map((m) => m.model_id);
 
 //let selectedModel = "Qwen2.5-7B-Instruct-q4f16_1-MLC";
-let selectedModel = "Qwen3-8B-q4f16_1-MLC";
+//let selectedModel = "Qwen3-8B-q4f16_1-MLC";
+let selectedModel = "Qwen3-1.7B-q4f16_1-MLC";
 
 async function onMessageStop() {
   engine.interruptGenerate();
